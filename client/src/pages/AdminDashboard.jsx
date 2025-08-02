@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { adminAPI } from '../api/admin';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 const AdminDashboard = () => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -81,6 +83,53 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleBanUser = async (userId, isCurrentlyBanned) => {
+    try {
+      if (isCurrentlyBanned) {
+        await adminAPI.unbanUser(userId);
+      } else {
+        await adminAPI.banUser(userId);
+      }
+      loadUsers(); // Refresh the list
+    } catch (error) {
+      setError(error.message);
+    }
+  };
+
+  const handleStatusUpdate = async (issueId, newStatus) => {
+    try {
+      await adminAPI.updateIssueStatus(issueId, { status: newStatus });
+      loadIssues(); // Refresh the list
+    } catch (error) {
+      setError(error.message);
+    }
+  };
+
+  const handleDeleteIssue = async (issueId) => {
+    if (window.confirm('Are you sure you want to delete this issue?')) {
+      try {
+        await adminAPI.deleteIssue(issueId);
+        loadIssues(); // Refresh the list
+      } catch (error) {
+        setError(error.message);
+      }
+    }
+  };
+
+  const handleReviewFlag = async (flagId, review) => {
+    try {
+      await adminAPI.reviewFlag(flagId, { review });
+      loadFlags(); // Refresh the list
+    } catch (error) {
+      setError(error.message);
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
+
   if (user?.role !== 'admin') {
     return (
       <div className="min-h-screen bg-gray-50 py-8">
@@ -101,7 +150,19 @@ const AdminDashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Admin Dashboard</h1>
+        {/* Header with Logout Button */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+            <p className="mt-2 text-gray-600">Manage users, issues, and monitor platform activity</p>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+          >
+            Logout
+          </button>
+        </div>
 
         {error && (
           <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
@@ -188,7 +249,9 @@ const AdminDashboard = () => {
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Joined</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -203,8 +266,29 @@ const AdminDashboard = () => {
                               {user.role}
                             </span>
                           </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                              user.isBanned ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                            }`}>
+                              {user.isBanned ? 'Banned' : 'Active'}
+                            </span>
+                          </td>
                           <td className="px-6 py-4 text-sm text-gray-500">
                             {new Date(user.createdAt).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 text-sm font-medium">
+                            {user.role !== 'admin' && (
+                              <button
+                                onClick={() => handleBanUser(user._id, user.isBanned)}
+                                className={`mr-2 px-3 py-1 text-xs font-medium rounded ${
+                                  user.isBanned
+                                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                                    : 'bg-red-100 text-red-800 hover:bg-red-200'
+                                }`}
+                              >
+                                {user.isBanned ? 'Unban' : 'Ban'}
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -240,6 +324,23 @@ const AdminDashboard = () => {
                             <span className="text-sm text-gray-500">{issue.category}</span>
                             <span className="text-sm text-gray-500">by {issue.createdBy?.name || 'Anonymous'}</span>
                           </div>
+                        </div>
+                        <div className="flex space-x-2">
+                          <select
+                            onChange={(e) => handleStatusUpdate(issue._id, e.target.value)}
+                            value={issue.status}
+                            className="px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="resolved">Resolved</option>
+                          </select>
+                          <button
+                            onClick={() => handleDeleteIssue(issue._id)}
+                            className="px-2 py-1 text-xs bg-red-100 text-red-800 rounded hover:bg-red-200"
+                          >
+                            Delete
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -278,6 +379,20 @@ const AdminDashboard = () => {
                               <strong>Reason:</strong> {flag.reason}
                             </p>
                           )}
+                        </div>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleReviewFlag(flag._id, 'valid')}
+                            className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200"
+                          >
+                            Valid
+                          </button>
+                          <button
+                            onClick={() => handleReviewFlag(flag._id, 'spam')}
+                            className="px-2 py-1 text-xs bg-red-100 text-red-800 rounded hover:bg-red-200"
+                          >
+                            Spam
+                          </button>
                         </div>
                       </div>
                     </div>

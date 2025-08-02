@@ -424,6 +424,72 @@ const unbanUser = async (req, res) => {
   }
 };
 
+// Delete flag
+const deleteFlag = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const flag = await Flag.findByIdAndDelete(id);
+    if (!flag) {
+      return res.status(404).json({
+        success: false,
+        message: 'Flag not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Flag deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete flag error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete flag'
+    });
+  }
+};
+
+// Review flag (mark as valid or spam)
+const reviewFlag = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { review, adminNote } = req.body; // review: 'valid' or 'spam'
+
+    const flag = await Flag.findById(id);
+    if (!flag) {
+      return res.status(404).json({
+        success: false,
+        message: 'Flag not found'
+      });
+    }
+
+    // Update flag with review status
+    flag.reviewStatus = review;
+    flag.adminNote = adminNote;
+    flag.reviewedAt = new Date();
+    flag.reviewedBy = req.user.id;
+    await flag.save();
+
+    // If marked as spam, optionally delete the flag
+    if (review === 'spam') {
+      await Flag.findByIdAndDelete(id);
+    }
+
+    res.json({
+      success: true,
+      message: `Flag marked as ${review}`,
+      data: flag
+    });
+  } catch (error) {
+    console.error('Review flag error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to review flag'
+    });
+  }
+};
+
 module.exports = {
   getDashboardData,
   getAllUsers,
@@ -433,5 +499,7 @@ module.exports = {
   updateIssueStatus,
   deleteIssue,
   banUser,
-  unbanUser
+  unbanUser,
+  deleteFlag,
+  reviewFlag
 }; 

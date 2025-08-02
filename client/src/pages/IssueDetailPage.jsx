@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { issuesAPI } from '../api/issues';
 import Navigation from '../components/Navigation';
+import { getCategoryImage } from '../utils/categoryImages';
 
 const IssueDetailPage = () => {
   const { id } = useParams();
@@ -81,6 +82,25 @@ const IssueDetailPage = () => {
       createdAt: '2024-01-16T14:20:00Z'
     }
   ];
+
+  // Get the appropriate image for the issue
+  const getIssueImage = () => {
+    // First try to use uploaded photos
+    if (issue?.photos && issue.photos.length > 0) {
+      return issue.photos[0];
+    }
+    
+    // If no uploaded photos, use predefined category image
+    if (issue?.category) {
+      const categoryImage = getCategoryImage(issue.category);
+      if (categoryImage) {
+        return categoryImage;
+      }
+    }
+    
+    // Fallback to placeholder
+    return 'https://via.placeholder.com/800x400?text=No+Image';
+  };
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -229,15 +249,13 @@ const IssueDetailPage = () => {
           </div>
 
           {/* Issue Photos */}
-          {issue.photos && issue.photos.length > 0 && (
-            <div className="mb-6">
-              <img
-                src={issue.photos[0]}
-                alt={issue.title}
-                className="w-full h-64 object-cover rounded-lg"
-              />
-            </div>
-          )}
+          <div className="mb-6">
+            <img
+              src={getIssueImage()}
+              alt={issue.title}
+              className="w-full h-64 object-cover rounded-lg"
+            />
+          </div>
 
           {/* Tabs */}
           <div className="border-b border-gray-200 mb-6">

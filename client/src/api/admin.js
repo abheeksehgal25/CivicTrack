@@ -212,5 +212,46 @@ export const adminAPI = {
     } catch (error) {
       throw error;
     }
+  },
+
+  // Delete flag
+  deleteFlag: async (flagId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/flags/${flagId}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to delete flag');
+      }
+
+      return data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Review flag
+  reviewFlag: async (flagId, reviewData) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/flags/${flagId}/review`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+        body: JSON.stringify(reviewData)
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to review flag');
+      }
+
+      return data;
+    } catch (error) {
+      throw error;
+    }
   }
 }; 

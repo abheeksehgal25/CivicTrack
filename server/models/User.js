@@ -25,6 +25,10 @@ const userSchema = new mongoose.Schema({
     enum: ['user', 'admin'],
     default: 'user'
   },
+  isBanned: {
+    type: Boolean,
+    default: false
+  },
   location: {
     type: {
       lat: { type: Number },

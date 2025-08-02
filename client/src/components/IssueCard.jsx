@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getCategoryImage } from '../utils/categoryImages';
 
 const IssueCard = ({ issue }) => {
   const { isAuthenticated } = useAuth();
@@ -52,6 +53,23 @@ const IssueCard = ({ issue }) => {
     }
   };
 
+  // Get the appropriate image for the issue
+  const getIssueImage = () => {
+    // First try to use uploaded photos
+    if (issue.photos && issue.photos.length > 0) {
+      return issue.photos[0];
+    }
+    
+    // If no uploaded photos, use predefined category image
+    const categoryImage = getCategoryImage(issue.category);
+    if (categoryImage) {
+      return categoryImage;
+    }
+    
+    // Fallback to placeholder
+    return 'https://via.placeholder.com/400x200?text=No+Image';
+  };
+
   const handleFlagClick = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -65,7 +83,7 @@ const IssueCard = ({ issue }) => {
         {/* Issue Image */}
         <div className="relative">
           <img
-            src={issue.image || issue.photos?.[0] || 'https://via.placeholder.com/400x200?text=No+Image'}
+            src={getIssueImage()}
             alt={issue.title}
             className="w-full h-48 object-cover"
           />

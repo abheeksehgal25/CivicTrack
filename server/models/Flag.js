@@ -20,6 +20,23 @@ const flagSchema = new mongoose.Schema({
     type: String,
     trim: true,
     maxlength: [200, 'Description cannot be more than 200 characters']
+  },
+  reviewStatus: {
+    type: String,
+    enum: ['pending', 'valid', 'spam'],
+    default: 'pending'
+  },
+  adminNote: {
+    type: String,
+    trim: true,
+    maxlength: [500, 'Admin note cannot be more than 500 characters']
+  },
+  reviewedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  reviewedAt: {
+    type: Date
   }
 }, {
   timestamps: true

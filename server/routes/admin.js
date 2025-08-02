@@ -1,22 +1,19 @@
 const express = require('express');
-const { protect, admin } = require('../middleware/auth');
-const {
-  getModerationIssues,
-  moderateIssue,
-  getAnalytics,
-  getFlaggedIssues
-} = require('../controllers/adminController');
-
 const router = express.Router();
+const adminController = require('../controllers/adminController');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
-// All admin routes require authentication and admin role
-router.use(protect);
-router.use(admin);
+// Admin dashboard data routes
+router.get('/dashboard', authenticateToken, requireAdmin, adminController.getDashboardData);
+router.get('/users', authenticateToken, requireAdmin, adminController.getAllUsers);
+router.get('/issues', authenticateToken, requireAdmin, adminController.getAllIssues);
+router.get('/flags', authenticateToken, requireAdmin, adminController.getAllFlags);
+router.get('/analytics', authenticateToken, requireAdmin, adminController.getAnalytics);
 
-// Routes
-router.get('/issues', getModerationIssues);
-router.patch('/issues/:id', moderateIssue);
-router.get('/analytics', getAnalytics);
-router.get('/flags', getFlaggedIssues);
+// Moderation actions
+router.patch('/issues/:id/status', authenticateToken, requireAdmin, adminController.updateIssueStatus);
+router.delete('/issues/:id', authenticateToken, requireAdmin, adminController.deleteIssue);
+router.patch('/users/:id/ban', authenticateToken, requireAdmin, adminController.banUser);
+router.patch('/users/:id/unban', authenticateToken, requireAdmin, adminController.unbanUser);
 
 module.exports = router; 

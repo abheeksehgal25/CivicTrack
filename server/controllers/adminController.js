@@ -1,210 +1,437 @@
-const Issue = require('../models/Issue');
-const StatusLog = require('../models/StatusLog');
-const Flag = require('../models/Flag');
 const User = require('../models/User');
+const Issue = require('../models/Issue');
+const Flag = require('../models/Flag');
+const StatusLog = require('../models/StatusLog');
 
-// @desc    Get issues for moderation
-// @route   GET /api/admin/issues
-// @access  Private/Admin
-const getModerationIssues = async (req, res) => {
+// Get dashboard overview data
+const getDashboardData = async (req, res) => {
   try {
-    const { status, category, page = 1, limit = 10 } = req.query;
-    
-    let query = {};
-    
-    if (status) query.status = status;
-    if (category) query.category = category;
-    
-    const skip = (page - 1) * limit;
-    
-    const issues = await Issue.find(query)
-      .populate('createdBy', 'name')
-      .populate({
-        path: 'flags',
-        populate: { path: 'userId', select: 'name' }
-      })
+    // Get counts
+    const totalUsers = await User.countDocuments();
+    const totalIssues = await Issue.countDocuments();
+    const totalFlags = await Flag.countDocuments();
+    const pendingIssues = await Issue.countDocuments({ status: 'pending' });
+    const resolvedIssues = await Issue.countDocuments({ status: 'resolved' });
+    const inProgressIssues = await Issue.countDocuments({ status: 'in_progress' });
+
+    // Get recent issues
+    const recentIssues = await Issue.find()
       .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-    
-    const total = await Issue.countDocuments(query);
-    
+      .limit(5)
+      .populate('createdBy', 'name email');
+
+    // Get recent flags
+    const recentFlags = await Flag.find()
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate('userId', 'name email')
+      .populate('issueId', 'title status');
+
+    // Get category distribution
+    const categoryStats = await Issue.aggregate([
+      {
+        $group: {
+          _id: '$category',
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { count: -1 }
+      }
+    ]);
+
+    // Get status distribution
+    const statusStats = await Issue.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { count: -1 }
+      }
+    ]);
+
     res.json({
-      issues,
-      pagination: {
-        current: parseInt(page),
-        total: Math.ceil(total / limit),
-        hasNext: page * limit < total,
-        hasPrev: page > 1
+      success: true,
+      data: {
+        counts: {
+          totalUsers,
+          totalIssues,
+          totalFlags,
+          pendingIssues,
+          resolvedIssues,
+          inProgressIssues
+        },
+        recentIssues,
+        recentFlags,
+        categoryStats,
+        statusStats
       }
     });
   } catch (error) {
-    console.error('Get moderation issues error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Dashboard data error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch dashboard data'
+    });
   }
 };
 
-// @desc    Moderate issue
-// @route   PATCH /api/admin/issues/:id
-// @access  Private/Admin
-const moderateIssue = async (req, res) => {
+// Get all users
+const getAllUsers = async (req, res) => {
   try {
-    const { action, comment } = req.body;
+    const { page = 1, limit = 10, search = '' } = req.query;
     
-    const issue = await Issue.findById(req.params.id);
-    if (!issue) {
-      return res.status(404).json({ message: 'Issue not found' });
+    const query = {};
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ];
     }
-    
-    let newStatus;
-    switch (action) {
-      case 'approve':
-        newStatus = 'in-progress';
-        break;
-      case 'reject':
-        newStatus = 'rejected';
-        break;
-      case 'resolve':
-        newStatus = 'resolved';
-        break;
-      default:
-        return res.status(400).json({ message: 'Invalid action' });
-    }
-    
-    issue.status = newStatus;
-    await issue.save();
-    
-    // Create status log
-    await StatusLog.create({
-      issueId: issue._id,
-      status: newStatus,
-      comment,
-      updatedBy: req.user.id
-    });
-    
-    // If rejecting, delete flags
-    if (action === 'reject') {
-      await Flag.deleteMany({ issueId: issue._id });
-    }
-    
-    const updatedIssue = await Issue.findById(issue._id)
-      .populate('createdBy', 'name');
-    
+
+    const users = await User.find(query)
+      .select('-password')
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await User.countDocuments(query);
+
     res.json({
-      message: 'Issue moderated successfully',
-      issue: updatedIssue
+      success: true,
+      data: {
+        users,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(total / limit),
+          totalUsers: total
+        }
+      }
     });
   } catch (error) {
-    console.error('Moderate issue error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Get users error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch users'
+    });
   }
 };
 
-// @desc    Get analytics
-// @route   GET /api/admin/analytics
-// @access  Private/Admin
+// Get all issues
+const getAllIssues = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status, category, search = '' } = req.query;
+    
+    const query = {};
+    if (status) query.status = status;
+    if (category) query.category = category;
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const issues = await Issue.find(query)
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await Issue.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: {
+        issues,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(total / limit),
+          totalIssues: total
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get issues error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch issues'
+    });
+  }
+};
+
+// Get all flags
+const getAllFlags = async (req, res) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+
+    const flags = await Flag.find()
+      .populate('userId', 'name email')
+      .populate('issueId', 'title status category')
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await Flag.countDocuments();
+
+    res.json({
+      success: true,
+      data: {
+        flags,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(total / limit),
+          totalFlags: total
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get flags error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch flags'
+    });
+  }
+};
+
+// Get analytics data
 const getAnalytics = async (req, res) => {
   try {
-    const { period = '30' } = req.query;
+    const { period = '30' } = req.query; // days
     const daysAgo = new Date();
     daysAgo.setDate(daysAgo.getDate() - parseInt(period));
-    
-    // Total issues
-    const totalIssues = await Issue.countDocuments();
-    
-    // Issues by status
-    const issuesByStatus = await Issue.aggregate([
-      { $group: { _id: '$status', count: { $sum: 1 } } }
-    ]);
-    
-    // Issues by category
-    const issuesByCategory = await Issue.aggregate([
-      { $group: { _id: '$category', count: { $sum: 1 } } }
-    ]);
-    
-    // Recent issues (last N days)
-    const recentIssues = await Issue.countDocuments({
-      createdAt: { $gte: daysAgo }
-    });
-    
-    // Issues created by day (last 7 days)
-    const dailyIssues = await Issue.aggregate([
+
+    // Issues over time
+    const issuesOverTime = await Issue.aggregate([
       {
         $match: {
-          createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+          createdAt: { $gte: daysAgo }
         }
       },
       {
         $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          _id: {
+            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" }
+          },
           count: { $sum: 1 }
         }
       },
-      { $sort: { _id: 1 } }
-    ]);
-    
-    // Top reporters
-    const topReporters = await Issue.aggregate([
-      { $group: { _id: '$createdBy', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 5 },
       {
-        $lookup: {
-          from: 'users',
-          localField: '_id',
-          foreignField: '_id',
-          as: 'user'
+        $sort: { _id: 1 }
+      }
+    ]);
+
+    // Category distribution
+    const categoryDistribution = await Issue.aggregate([
+      {
+        $group: {
+          _id: '$category',
+          count: { $sum: 1 }
         }
       },
-      { $unwind: '$user' },
-      { $project: { name: '$user.name', count: 1 } }
+      {
+        $sort: { count: -1 }
+      }
     ]);
-    
-    // Flagged issues
-    const flaggedIssues = await Flag.aggregate([
-      { $group: { _id: '$issueId', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 10 }
+
+    // Status distribution
+    const statusDistribution = await Issue.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { count: -1 }
+      }
     ]);
-    
+
+    // User registration over time
+    const userRegistrations = await User.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: daysAgo }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { _id: 1 }
+      }
+    ]);
+
     res.json({
-      totalIssues,
-      issuesByStatus,
-      issuesByCategory,
-      recentIssues,
-      dailyIssues,
-      topReporters,
-      flaggedIssues
+      success: true,
+      data: {
+        issuesOverTime,
+        categoryDistribution,
+        statusDistribution,
+        userRegistrations
+      }
     });
   } catch (error) {
-    console.error('Get analytics error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Analytics error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch analytics'
+    });
   }
 };
 
-// @desc    Get flagged issues
-// @route   GET /api/admin/flags
-// @access  Private/Admin
-const getFlaggedIssues = async (req, res) => {
+// Update issue status
+const updateIssueStatus = async (req, res) => {
   try {
-    const flags = await Flag.find()
-      .populate('userId', 'name')
-      .populate({
-        path: 'issueId',
-        populate: { path: 'createdBy', select: 'name' }
-      })
-      .sort({ createdAt: -1 });
-    
-    res.json({ flags });
+    const { id } = req.params;
+    const { status, adminNote } = req.body;
+
+    const issue = await Issue.findById(id);
+    if (!issue) {
+      return res.status(404).json({
+        success: false,
+        message: 'Issue not found'
+      });
+    }
+
+    issue.status = status;
+    if (adminNote) {
+      issue.adminNote = adminNote;
+    }
+    await issue.save();
+
+    // Create status log
+    await StatusLog.create({
+      issueId: id,
+      status,
+      timestamp: new Date(),
+      adminNote
+    });
+
+    res.json({
+      success: true,
+      message: 'Issue status updated successfully',
+      data: issue
+    });
   } catch (error) {
-    console.error('Get flagged issues error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Update issue status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update issue status'
+    });
+  }
+};
+
+// Delete issue
+const deleteIssue = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const issue = await Issue.findByIdAndDelete(id);
+    if (!issue) {
+      return res.status(404).json({
+        success: false,
+        message: 'Issue not found'
+      });
+    }
+
+    // Delete related flags and status logs
+    await Flag.deleteMany({ issueId: id });
+    await StatusLog.deleteMany({ issueId: id });
+
+    res.json({
+      success: true,
+      message: 'Issue deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete issue error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete issue'
+    });
+  }
+};
+
+// Ban user
+const banUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { isBanned: true },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'User banned successfully',
+      data: user
+    });
+  } catch (error) {
+    console.error('Ban user error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to ban user'
+    });
+  }
+};
+
+// Unban user
+const unbanUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { isBanned: false },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'User unbanned successfully',
+      data: user
+    });
+  } catch (error) {
+    console.error('Unban user error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to unban user'
+    });
   }
 };
 
 module.exports = {
-  getModerationIssues,
-  moderateIssue,
+  getDashboardData,
+  getAllUsers,
+  getAllIssues,
+  getAllFlags,
   getAnalytics,
-  getFlaggedIssues
+  updateIssueStatus,
+  deleteIssue,
+  banUser,
+  unbanUser
 }; 

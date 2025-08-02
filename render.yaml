@@ -1,0 +1,30 @@
+services:
+  # Backend API Service
+  - type: web
+    name: civictrack-backend
+    env: node
+    plan: free
+    buildCommand: cd server && npm install
+    startCommand: cd server && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        value: mongodb+srv://sehgalabheek:Ishiabhi@cluster0.nozc9is.mongodb.net/civictrack?retryWrites=true&w=majority&appName=Cluster0
+      - key: JWT_SECRET
+        value: 64d976d58f058ea06b368ef4663a99b8cd17fe206923a53463185dc9bf93bc907bec85406a275735c3f560d1a9f233e7edf5c52c4f5f6974b368a0aec1cfd9e1
+      - key: JWT_EXPIRE
+        value: 30d
+      - key: CORS_ORIGIN
+        value: https://civictrack-frontend.onrender.com
+
+  # Frontend Service
+  - type: web
+    name: civictrack-frontend
+    env: static
+    plan: free
+    buildCommand: cd client && npm install && npm run build
+    staticPublishPath: ./client/dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://civictrack-backend.onrender.com 

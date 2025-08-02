@@ -15,6 +15,13 @@ const register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
+    // Validate required fields
+    if (!name || !email || !password) {
+      return res.status(400).json({ 
+        message: 'Please provide name, email, and password' 
+      });
+    }
+
     // Check if user exists
     const userExists = await User.findOne({ email });
     if (userExists) {
@@ -39,6 +46,23 @@ const register = async (req, res) => {
     }
   } catch (error) {
     console.error('Registration error:', error);
+    
+    // Handle Mongoose validation errors
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({ 
+        message: 'Validation failed', 
+        errors: messages 
+      });
+    }
+    
+    // Handle duplicate key error
+    if (error.code === 11000) {
+      return res.status(400).json({ 
+        message: 'User with this email already exists' 
+      });
+    }
+    
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -49,6 +73,13 @@ const register = async (req, res) => {
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
+
+    // Validate required fields
+    if (!email || !password) {
+      return res.status(400).json({ 
+        message: 'Please provide email and password' 
+      });
+    }
 
     // Check for user email
     const user = await User.findOne({ email });

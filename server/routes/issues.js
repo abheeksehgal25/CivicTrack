@@ -64,6 +64,12 @@ const updateStatusValidation = [
 // Public routes
 router.get('/', getIssues);
 
+
+
+
+
+
+
 // Protected routes (specific routes first)
 router.get('/user', protect, getUserIssues);
 router.post('/', protect, createIssueValidation, handleValidationErrors, createIssue);
